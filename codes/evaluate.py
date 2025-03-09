@@ -137,9 +137,9 @@ def evaluate_BHS_Standard():
 		leq5 = 0
 		leq10 = 0
 		leq15 = 0
-
+		
 		for i in range(len(err)):
-
+			
 			if(abs(err[i]) <= 5):
 				leq5 += 1
 				leq10 += 1
@@ -181,126 +181,141 @@ def evaluate_BHS_Standard():
 		for i in (range(len(Ytrue))):
 			y_t = Ytrue[i].ravel()
 			y_p = Ypred[i].ravel()
+			dbps.append((max_abp[i]-min_abp[i])*abs(min(y_t)-min(y_p)))#(max_abp-min_abp)*
+			sbps.append((max_abp[i]-min_abp[i])*abs(max(y_t)-max(y_p)))
+			maps.append((max_abp[i]-min_abp[i])*abs(np.mean(y_t)-np.mean(y_p)))
 
-			dbps.append(max_abp*abs(min(y_t)-min(y_p)))
-			sbps.append(max_abp*abs(max(y_t)-max(y_p)))
-			maps.append(max_abp*abs(np.mean(y_t)-np.mean(y_p)))
+		
 
 		return (sbps, dbps, maps)
 
-	dt = pickle.load(open(os.path.join('data', 'test.p'), 'rb'))				# loading test data
+
+	dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))				# loading test data
 	X_test = dt['X_test']
 	Y_test = dt['Y_test']
 
-	dt = pickle.load(open(os.path.join('data', 'meta9.p'), 'rb'))				# loading meta data
+	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))				# loading meta data
 	max_ppg = dt['max_ppg']
 	min_ppg = dt['min_ppg']
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
-	Y_pred = pickle.load(open('test_output.p', 'rb'))							# loading prediction
 
-	(sbps, dbps, maps) = calcError(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)   # compute errors
+	for foldname in range(3,5):
+		print(f"Evaluating Fold {foldname+1}")
 
-	sbp_percent = BHS_metric(sbps)											# compute BHS metric for sbp
-	dbp_percent = BHS_metric(dbps)											# compute BHS metric for dbp
-	map_percent = BHS_metric(maps)											# compute BHS metric for map
+        # Load test predictions for this fold
+		Y_pred = pickle.load(open(f'test_subject_normal_output_fold{foldname}.p', 'rb'))
 
-	print('----------------------------')
-	print('|        BHS-Metric        |')
-	print('----------------------------')
+		(sbps, dbps, maps) = calcError(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)   # compute errors
 
-	print('----------------------------------------')
-	print('|     | <= 5mmHg | <=10mmHg | <=15mmHg |')
-	print('----------------------------------------')
-	print('| DBP |  {} %  |  {} %  |  {} %  |'.format(round(dbp_percent[0], 1), round(dbp_percent[1], 1), round(dbp_percent[2], 1)))
-	print('| MAP |  {} %  |  {} %  |  {} %  |'.format(round(map_percent[0], 1), round(map_percent[1], 1), round(map_percent[2], 1)))
-	print('| SBP |  {} %  |  {} %  |  {} %  |'.format(round(sbp_percent[0], 1), round(sbp_percent[1], 1), round(sbp_percent[2], 1)))
-	print('----------------------------------------')
+		print('-----------------------')
+		print('|     |  MAE   |  STD  |')
+		print('-----------------------')
+		print('| DBP | {} | {} |'.format(round(np.mean(dbps), 3), round(np.std(dbps), 3)))
+		print('| MAP | {} | {} |'.format(round(np.mean(maps), 3), round(np.std(maps), 3)))
+		print('| SBP | {} | {} |'.format(round(np.mean(sbps), 3), round(np.std(sbps), 3)))
+		print('-----------------------')
 
-	'''
-		Plot figures
-	'''
+		sbp_percent = BHS_metric(sbps)											# compute BHS metric for sbp
+		dbp_percent = BHS_metric(dbps)											# compute BHS metric for dbp
+		map_percent = BHS_metric(maps)											# compute BHS metric for map
 
-	## SBPS ##
+		print('----------------------------')
+		print('|        BHS-Metric        |')
+		print('----------------------------')
 
-	fig = plt.figure(figsize=(18, 4), dpi=120)
-	ax1 = plt.subplot(1,3,1)
-	ax2 = ax1.twinx()
-	sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax1)
-	sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax2)
-	ax2.set_yticklabels(['0 \%', '3.67 \%', '7.34 \%',
-						 '11.01 \%', '14.67 \%', '18.34 \%', '22.01 \%'])
-	ax1.set_xlabel(r'$|$'+'Error'+r'$|$' + ' (mmHg)', fontsize=14)
-	ax1.set_ylabel('Number of Samples', fontsize=14)
-	ax2.set_ylabel('Percentage of Samples', fontsize=14)
-	plt.title('Absolute Error in SBP Prediction', fontsize=18)
-	plt.xlim(xmax=60.0, xmin=0.0)
-	plt.xticks(np.arange(0, 60+1, 5))
-	p1 = [5, 0]
-	p2 = [5, 10000]
-	newline(p1, p2)
-	p1 = [10, 0]
-	p2 = [10, 10000]
-	newline(p1, p2)
-	p1 = [15, 0]
-	p2 = [15, 10000]
-	newline(p1, p2)
-	plt.tight_layout()
+		print('----------------------------------------')
+		print('|     | <= 5mmHg | <=10mmHg | <=15mmHg |')
+		print('----------------------------------------')
+		print('| DBP |  {} %  |  {} %  |  {} %  |'.format(round(dbp_percent[0], 1), round(dbp_percent[1], 1), round(dbp_percent[2], 1)))
+		print('| MAP |  {} %  |  {} %  |  {} %  |'.format(round(map_percent[0], 1), round(map_percent[1], 1), round(map_percent[2], 1)))
+		print('| SBP |  {} %  |  {} %  |  {} %  |'.format(round(sbp_percent[0], 1), round(sbp_percent[1], 1), round(sbp_percent[2], 1)))
+		print('----------------------------------------')
 
-	## DBPS ##
+		'''
+			Plot figures
+		'''
 
-	
-	ax1 = plt.subplot(1,3,2)
-	ax2 = ax1.twinx()
-	sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax1)
-	sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax2)
-	ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%',
-						 '22.01 \%', '29.35 \%', '36.68 \%', '44.02 \%'])
-	ax1.set_xlabel(r'$|$'+'Error'+r'$|$' + ' (mmHg)', fontsize=14)
-	ax1.set_ylabel('Number of Samples', fontsize=14)
-	ax2.set_ylabel('Percentage of Samples', fontsize=14)
-	plt.title('Absolute Error in DBP Prediction', fontsize=18)
-	plt.xlim(xmax=60.0, xmin=0.0)
-	plt.xticks(np.arange(0, 60+1, 5))
-	p1 = [5, 0]
-	p2 = [5, 10000]
-	newline(p1, p2)
-	p1 = [10, 0]
-	p2 = [10, 10000]
-	newline(p1, p2)
-	p1 = [15, 0]
-	p2 = [15, 10000]
-	newline(p1, p2)
-	plt.tight_layout()
+		## SBPS ##
 
-	## MAPS ##
+		# fig = plt.figure(figsize=(18, 4), dpi=120)
+		# ax1 = plt.subplot(1,3,1)
+		# ax2 = ax1.twinx()
+		# sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax1)
+		# sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax2)
+		# ax2.set_yticklabels(['0 \%', '3.67 \%', '7.34 \%',
+		# 					'11.01 \%', '14.67 \%', '18.34 \%', '22.01 \%'])
+		# ax1.set_xlabel(r'$|$'+'Error'+r'$|$' + ' (mmHg)', fontsize=14)
+		# ax1.set_ylabel('Number of Samples', fontsize=14)
+		# ax2.set_ylabel('Percentage of Samples', fontsize=14)
+		# plt.title('Absolute Error in SBP Prediction', fontsize=18)
+		# plt.xlim(xmax=60.0, xmin=0.0)
+		# plt.xticks(np.arange(0, 60+1, 5))
+		# p1 = [5, 0]
+		# p2 = [5, 10000]
+		# newline(p1, p2)
+		# p1 = [10, 0]
+		# p2 = [10, 10000]
+		# newline(p1, p2)
+		# p1 = [15, 0]
+		# p2 = [15, 10000]
+		# newline(p1, p2)
+		# plt.tight_layout()
 
-	
-	ax1 = plt.subplot(1,3,3)
-	ax2 = ax1.twinx()
-	sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax1)
-	sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax2)
-	ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%', '22.01 \%',
-						 '29.35 \%', '36.68 \%', '44.02 \%', '51.36 \%'])
-	ax1.set_xlabel(r'$|$'+'Error'+r'$|$' + ' (mmHg)', fontsize=14)
-	ax1.set_ylabel('Number of Samples', fontsize=14)
-	ax2.set_ylabel('Percentage of Samples', fontsize=14)
-	plt.title('Absolute Error in MAP Prediction', fontsize=18)
-	plt.xlim(xmax=60.0, xmin=0.0)
-	plt.xticks(np.arange(0, 60+1, 5))
-	p1 = [5, 0]
-	p2 = [5, 10000]
-	newline(p1, p2)
-	p1 = [10, 0]
-	p2 = [10, 10000]
-	newline(p1, p2)
-	p1 = [15, 0]
-	p2 = [15, 10000]
-	newline(p1, p2)
-	plt.tight_layout()
+		# ## DBPS ##
 
-	plt.show()
+		
+		# ax1 = plt.subplot(1,3,2)
+		# ax2 = ax1.twinx()
+		# sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax1)
+		# sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax2)
+		# ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%',
+		# 					'22.01 \%', '29.35 \%', '36.68 \%', '44.02 \%'])
+		# ax1.set_xlabel(r'$|$'+'Error'+r'$|$' + ' (mmHg)', fontsize=14)
+		# ax1.set_ylabel('Number of Samples', fontsize=14)
+		# ax2.set_ylabel('Percentage of Samples', fontsize=14)
+		# plt.title('Absolute Error in DBP Prediction', fontsize=18)
+		# plt.xlim(xmax=60.0, xmin=0.0)
+		# plt.xticks(np.arange(0, 60+1, 5))
+		# p1 = [5, 0]
+		# p2 = [5, 10000]
+		# newline(p1, p2)
+		# p1 = [10, 0]
+		# p2 = [10, 10000]
+		# newline(p1, p2)
+		# p1 = [15, 0]
+		# p2 = [15, 10000]
+		# newline(p1, p2)
+		# plt.tight_layout()
+
+		# ## MAPS ##
+
+		
+		# ax1 = plt.subplot(1,3,3)
+		# ax2 = ax1.twinx()
+		# sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax1)
+		# sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax2)
+		# ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%', '22.01 \%',
+		# 					'29.35 \%', '36.68 \%', '44.02 \%', '51.36 \%'])
+		# ax1.set_xlabel(r'$|$'+'Error'+r'$|$' + ' (mmHg)', fontsize=14)
+		# ax1.set_ylabel('Number of Samples', fontsize=14)
+		# ax2.set_ylabel('Percentage of Samples', fontsize=14)
+		# plt.title('Absolute Error in MAP Prediction', fontsize=18)
+		# plt.xlim(xmax=60.0, xmin=0.0)
+		# plt.xticks(np.arange(0, 60+1, 5))
+		# p1 = [5, 0]
+		# p2 = [5, 10000]
+		# newline(p1, p2)
+		# p1 = [10, 0]
+		# p2 = [10, 10000]
+		# newline(p1, p2)
+		# p1 = [15, 0]
+		# p2 = [15, 10000]
+		# newline(p1, p2)
+		# plt.tight_layout()
+
+		# plt.show()
 
 
 def evaluate_AAMI_Standard():
@@ -627,10 +642,10 @@ def bland_altman_plot():
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
-	Ypred = pickle.load(open('test_output.p','rb'))						# loading prediction
+	Ypred = pickle.load(open('test_output_fold6.p','rb'))						# loading prediction test_subject_output_fold0
 
-	Ytrue = Ytrue * max_abp + min_abp
-	Ypred = Ypred * max_abp + min_abp
+	Ytrue = Ytrue * (max_abp-min_abp) + min_abp
+	Ypred = Ypred * (max_abp-min_abp) + min_abp
 
 	sbpTrues = []
 	sbpPreds = []
@@ -674,7 +689,7 @@ def bland_altman_plot():
 	bland_altman(sbpTrues,sbpPreds)	
 	plt.title('Bland-Altman Plot for SBP Prediction',fontsize=18)
 	
-	plt.show()
+	plt.savefig('normal_bland.png')
 	
 
 def regression_plot():
@@ -692,10 +707,10 @@ def regression_plot():
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
-	Ypred = pickle.load(open('test_output.p','rb'))					# loading the prediction
+	Ypred = pickle.load(open('test_nonormal_output_fold6.p','rb'))					# loading the prediction
 
-	Ytrue = Ytrue * max_abp + min_abp
-	Ypred = Ypred * max_abp + min_abp
+	# Ytrue = Ytrue * max_abp + min_abp
+	# Ypred = Ypred * max_abp + min_abp
 
 	sbpTrues = []
 	sbpPreds = []
@@ -726,23 +741,26 @@ def regression_plot():
 	plt.figure(figsize=(18,6),dpi=120)
 	
 	plt.subplot(1,3,1)
-	sns.regplot(dbpTrues,dbpPreds,scatter_kws={'alpha':0.2,'s':1},line_kws={'color':'#e0b0b4'})
+	sns.regplot(x=dbpTrues, y=dbpPreds, scatter_kws={'alpha':0.2, 's':1}, line_kws={'color':'#e0b0b4'})
+
 	plt.xlabel('Target Value (mmHg)',fontsize=14)
 	plt.ylabel('Estimated Value (mmHg)',fontsize=14)
 	plt.title('Regression Plot for DBP Prediction',fontsize=18)
 	
 	plt.subplot(1,3,2)
-	sns.regplot(mapTrues,mapPreds,scatter_kws={'alpha':0.2,'s':1},line_kws={'color':'#e0b0b4'})
+	sns.regplot(x=dbpTrues, y=dbpPreds, scatter_kws={'alpha':0.2, 's':1}, line_kws={'color':'#e0b0b4'})
+
 	plt.xlabel('Target Value (mmHg)',fontsize=14)
 	plt.ylabel('Estimated Value (mmHg)',fontsize=14)
 	plt.title('Regression Plot for MAP Prediction',fontsize=18)
 
 	plt.subplot(1,3,3)
-	sns.regplot(sbpTrues,sbpPreds,scatter_kws={'alpha':0.2,'s':1},line_kws={'color':'#e0b0b4'})	
+	sns.regplot(x=dbpTrues, y=dbpPreds, scatter_kws={'alpha':0.2, 's':1}, line_kws={'color':'#e0b0b4'})
+
 	plt.xlabel('Target Value (mmHg)',fontsize=14)
 	plt.ylabel('Estimated Value (mmHg)',fontsize=14)
 	plt.title('Regression Plot for SBP Prediction',fontsize=18)
-	plt.show()
+	plt.savefig('normal_regressor.png')
 	
 	'''
 		Printing statistical analysis values like r and p value
@@ -770,6 +788,6 @@ def main():
 
 	regression_plot()				# draws the regression plots
 
-
+#test_subject_output_fold
 if __name__ == '__main__':
-	main()
+	evaluate_BHS_Standard()
