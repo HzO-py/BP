@@ -23,73 +23,73 @@ def predicting_ABP_waveform():
 		are presented, and a comparison is also demonstrated
 	"""
 
-	dt = pickle.load(open(os.path.join('data', 'test.p'), 'rb'))			# loading test data
+	dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))			# loading test data
 	X_test = dt['X_test']
 	Y_test = dt['Y_test']
 
-	dt = pickle.load(open(os.path.join('data', 'meta9.p'), 'rb'))			# loading metadata
+	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))			# loading metadata
 	max_ppg = dt['max_ppg']
 	min_ppg = dt['min_ppg']
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
-	Y_test_pred_approximate = pickle.load(open('test_output_approximate.p', 'rb'))	# loading precomputed output from approximation network
-	Y_test_pred_approximate = Y_test_pred_approximate[0]		# taking the actual output, the rest are intermediate ones
+	Y_test_pred_approximate = pickle.load(open(os.path.join('output','test_subject_normal_output_approximate_fold5.p'), 'rb'))	# loading precomputed output from approximation network
+	# Y_test_pred_approximate = Y_test_pred_approximate[0]		# taking the actual output, the rest are intermediate ones
 
-	Y_test_pred = pickle.load(open('test_output.p', 'rb'))	# loading precomputed output from refinement network
+	Y_test_pred = pickle.load(open(os.path.join('output','test_subject_normal_output_fold5.p'), 'rb'))	# loading precomputed output from refinement network
 
-	while(True):			# interactive cli
+	# while(True):			# interactive cli
 
-		indix = int(input(
-			'Please input a record from 1 to 27260 to visualize.\nInput -1 to quit.\n> '))
+	# 	indix = int(input(
+	# 		'Please input a record from 1 to 27260 to visualize.\nInput -1 to quit.\n> '))
 
-		if(indix == -1):			# exit
-			break
+	# 	if(indix == -1):			# exit
+	# 		break
 
-		if(indix < 1 or indix > 27260):			# wrong index
-			continue
+	# 	if(indix < 1 or indix > 27260):			# wrong index
+	# 		continue
 
-		indix -= 1
+	indix = 3211
 
-		ppg_signal = X_test[indix] * max_ppg + min_ppg											# input ppg signal
-		abp_signal_pred_approximate = Y_test_pred_approximate[indix] * max_abp + min_abp		# abp waveform approx.
-		abp_signal_pred = Y_test_pred[indix] * max_abp + min_abp								# abp waveform predicted
-		abp_signal_ground_truth = Y_test[indix] * max_abp + min_abp								# abp waveform ground truth
+	ppg_signal = X_test[indix] * (max_ppg[indix]-min_ppg[indix]) + min_ppg[indix]											# input ppg signal
+	abp_signal_pred_approximate = Y_test_pred_approximate[indix] * (max_abp[indix]-min_abp[indix]) + min_abp[indix]		# abp waveform approx.
+	abp_signal_pred = Y_test_pred[indix] * (max_abp[indix]-min_abp[indix]) + min_abp[indix]								# abp waveform predicted
+	abp_signal_ground_truth = Y_test[indix] * (max_abp[indix]-min_abp[indix]) + min_abp[indix]								# abp waveform ground truth
 
-		time_scale = np.arange(0, 8.192, 8.192/len(ppg_signal))									# series for time axis
+	time_scale = np.arange(0, 8.192, 8.192/len(ppg_signal))									# series for time axis
 
-		plt.figure(figsize=(30, 15))
+	plt.figure(figsize=(30, 15))
 
-		plt.subplot(5, 1, 1)
-		plt.plot(time_scale, ppg_signal, c='k', linewidth=2)
-		plt.title('Input PPG Signal', fontsize=20)
+	plt.subplot(5, 1, 1)
+	plt.plot(time_scale, ppg_signal, c='k', linewidth=2)
+	plt.title('Input PPG Signal', fontsize=20)
 
-		plt.subplot(5, 1, 2)
-		plt.plot(time_scale, abp_signal_pred_approximate, c='r', linewidth=2)
-		plt.ylabel('ABP (mmHg)', fontsize=15)
-		plt.title('Output of Approximate Network', fontsize=20)
+	plt.subplot(5, 1, 2)
+	plt.plot(time_scale, abp_signal_pred_approximate, c='r', linewidth=2)
+	plt.ylabel('ABP (mmHg)', fontsize=15)
+	plt.title('Output of Approximate Network', fontsize=20)
 
-		plt.subplot(5, 1, 3)
-		plt.plot(time_scale, abp_signal_pred, c='b', linewidth=2)
-		plt.ylabel('ABP (mmHg)', fontsize=15)
-		plt.title('Output of Refinement Network', fontsize=20)
+	plt.subplot(5, 1, 3)
+	plt.plot(time_scale, abp_signal_pred, c='b', linewidth=2)
+	plt.ylabel('ABP (mmHg)', fontsize=15)
+	plt.title('Output of Refinement Network', fontsize=20)
 
-		plt.subplot(5, 1, 4)
-		plt.plot(time_scale, abp_signal_ground_truth, c='g', linewidth=2)
-		plt.ylabel('ABP (mmHg)', fontsize=15)
-		plt.title('Ground Truth', fontsize=20)
+	plt.subplot(5, 1, 4)
+	plt.plot(time_scale, abp_signal_ground_truth, c='g', linewidth=2)
+	plt.ylabel('ABP (mmHg)', fontsize=15)
+	plt.title('Ground Truth', fontsize=20)
 
-		plt.subplot(5, 1, 5)
-		plt.plot(time_scale, abp_signal_pred_approximate, c='r', label='Output Level 1', linewidth=2)
-		plt.plot(time_scale, abp_signal_pred, c='b', label='Output Level 2', linewidth=2)
-		plt.plot(time_scale, abp_signal_ground_truth, c='g', label='Ground Truth', linewidth=2)
-		plt.title('Comparison', fontsize=20)
-		plt.xlabel('Time (sec)', fontsize=15)
-		plt.ylabel('ABP (mmHg)', fontsize=15)
+	plt.subplot(5, 1, 5)
+	plt.plot(time_scale, abp_signal_pred_approximate, c='r', label='Output Level 1', linewidth=2)
+	plt.plot(time_scale, abp_signal_pred, c='b', label='Output Level 2', linewidth=2)
+	plt.plot(time_scale, abp_signal_ground_truth, c='g', label='Ground Truth', linewidth=2)
+	plt.title('Comparison', fontsize=20)
+	plt.xlabel('Time (sec)', fontsize=15)
+	plt.ylabel('ABP (mmHg)', fontsize=15)
 
-		plt.tight_layout()
+	plt.tight_layout()
 
-		plt.show()
+	plt.savefig('/home/lzqhzo/PPG2ABP/codes/imgs/waveform.png')
 
 
 def evaluate_BHS_Standard():
@@ -154,7 +154,7 @@ def evaluate_BHS_Standard():
 
 		return (leq5*100.0/len(err), leq10*100.0/len(err), leq15*100.0/len(err))
 
-	def calcError(Ytrue, Ypred, max_abp, min_abp, max_ppg, min_ppg):
+	def calcError(Ytrue, Ypred, global_max_abp):
 		"""
 		Calculates the absolute error of sbp,dbp,map etc.
 		
@@ -181,33 +181,34 @@ def evaluate_BHS_Standard():
 		for i in (range(len(Ytrue))):
 			y_t = Ytrue[i].ravel()
 			y_p = Ypred[i].ravel()
-			dbps.append((max_abp[i]-min_abp[i])*abs(min(y_t)-min(y_p)))#(max_abp-min_abp)*
-			sbps.append((max_abp[i]-min_abp[i])*abs(max(y_t)-max(y_p)))
-			maps.append((max_abp[i]-min_abp[i])*abs(np.mean(y_t)-np.mean(y_p)))
+			dbps.append(global_max_abp*abs(min(y_t)-min(y_p)))#(max_abp[i]-min_abp[i])*
+			sbps.append(global_max_abp*abs(max(y_t)-max(y_p)))
+			maps.append(global_max_abp*abs(np.mean(y_t)-np.mean(y_p)))
 
 		
 
 		return (sbps, dbps, maps)
 
 
-	dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))				# loading test data
-	X_test = dt['X_test']
+	dt = pickle.load(open(os.path.join('data', 'test_subject_preprocess.p'), 'rb'))				# loading test data
+	# X_test = dt['X_test']
 	Y_test = dt['Y_test']
+	global_max_abp = dt['global_max_abp']
 
-	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))				# loading meta data
-	max_ppg = dt['max_ppg']
-	min_ppg = dt['min_ppg']
-	max_abp = dt['max_abp']
-	min_abp = dt['min_abp']
+	# dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))				# loading meta data
+	# max_ppg = dt['max_ppg']
+	# min_ppg = dt['min_ppg']
+	# max_abp = dt['max_abp']
+	# min_abp = dt['min_abp']
 
 
-	for foldname in range(3,5):
+	for foldname in range(5,10):
 		print(f"Evaluating Fold {foldname+1}")
 
         # Load test predictions for this fold
-		Y_pred = pickle.load(open(f'test_subject_normal_output_fold{foldname}.p', 'rb'))
+		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_preprocess_output_fold{foldname}.p'), 'rb'))
 
-		(sbps, dbps, maps) = calcError(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)   # compute errors
+		(sbps, dbps, maps) = calcError(Y_test, Y_pred, global_max_abp)   # compute errors
 
 		print('-----------------------')
 		print('|     |  MAE   |  STD  |')
@@ -788,6 +789,7 @@ def main():
 
 	regression_plot()				# draws the regression plots
 
-#test_subject_output_fold
+
 if __name__ == '__main__':
+	# predicting_ABP_waveform()
 	evaluate_BHS_Standard()

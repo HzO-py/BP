@@ -180,6 +180,7 @@ import gc
 import os
 import time
 import pickle
+import numpy as np
 import scipy.signal
 import torch
 import torch.nn as nn
@@ -195,6 +196,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def train_model(model, train_loader, val_loader, loss_fn, optimizer, epochs, model_path, is_refinement=False):
     best_val_loss = float('inf')
+    counter = 0  # 记录连续未提升的轮数
+    patience = 10
 
     # 💡 **支持多 GPU**
     if torch.cuda.device_count() > 1:
@@ -266,13 +269,23 @@ def train_model(model, train_loader, val_loader, loss_fn, optimizer, epochs, mod
 
         print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss / len(train_loader):.4f}, Val Loss: {val_loss / len(val_loader):.4f}")
 
-        # 💡 只在主 GPU 保存最优模型
+        # ✅ **Early Stopping 逻辑**
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            counter = 0  # 重新计数
             if torch.cuda.device_count() > 1:
                 torch.save(model.module.state_dict(), model_path)  
             else:
                 torch.save(model.state_dict(), model_path)
+            print(f"✅ Model saved at epoch {epoch+1}")
+        else:
+            counter += 1
+            print(f"⚠️ Early Stopping Counter: {counter}/{patience}")
+
+        # **如果 `counter` 超过 `patience`，提前停止训练**
+        if counter >= patience:
+            print("🛑 Early stopping triggered.")
+            break  # 提前停止训练
 
 
 
@@ -296,60 +309,38 @@ def train_approximate_network():
     os.makedirs('models', exist_ok=True)
     os.makedirs('History', exist_ok=True)
 
-    for foldname in range(5,10):
+    for foldname in range(7,10):
         print(f"Training Fold {foldname+1}")
 
         # 加载数据
-        dt = pickle.load(open(f'data/train_subject_normal{foldname}.p', 'rb'))
-        X_train, Y_train = dt['X_train'], prepareLabel(dt['Y_train'])
+        dt = pickle.load(open(f'data/train_subject_preprocess{foldname}.p', 'rb'))
+        X_train_ppg, X_train_vpg, X_train_apg = dt['X_train'], dt['V_train'], dt['A_train']
+        Y_train = prepareLabel(dt['Y_train'])        
 
-        dt = pickle.load(open(f'data/val_subject_normal{foldname}.p', 'rb'))
-        X_val, Y_val = dt['X_val'], prepareLabel(dt['Y_val'])
+        dt = pickle.load(open(f'data/val_subject_preprocess{foldname}.p', 'rb'))
+        X_val_ppg, X_val_vpg, X_val_apg = dt['X_val'], dt['V_val'], dt['A_val']
+        Y_val = prepareLabel(dt['Y_val'])
         
+        # ✅ **拼接 PPG, VPG, APG**
+        X_train = np.concatenate([X_train_ppg, X_train_vpg, X_train_apg], axis=-1)  # (batch_size, length, 3)
+        X_val = np.concatenate([X_val_ppg, X_val_vpg, X_val_apg], axis=-1)  # (batch_size, length, 3)
 
-        # 转换为 Tensor
         X_train = torch.tensor(X_train, dtype=torch.float32).permute(0, 2, 1).to(device)
         X_val = torch.tensor(X_val, dtype=torch.float32).permute(0, 2, 1).to(device)
 
-
-        # **🔥 解决 BUG: 分开传入 dict 内的 Tensors**
         train_dataset = TensorDataset(X_train, Y_train['out'], Y_train['level1'], Y_train['level2'], Y_train['level3'], Y_train['level4'])
         val_dataset = TensorDataset(X_val, Y_val['out'], Y_val['level1'], Y_val['level2'], Y_val['level3'], Y_val['level4'])
-        # train_dataset = TensorDataset(X_train, Y_train['out'])
-        # val_dataset = TensorDataset(X_val, Y_val['out'])
 
         train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
 
-        model = model_dict[mdlName1](length).to(device)
-        # pre_trained_model_path = f'models/{mdlName1}_model1_fold{foldname}.pth'
-        # model.load_state_dict(torch.load(pre_trained_model_path, map_location=device))
-
-        # **冻结 UNet**
-        # for param in model.parameters():
-        #     param.requires_grad = False
-
-        # **定义 MLP**
-        # example_input = torch.randn(1, 1, length).to(device)
-        # example_output = model(example_input)
-        # input_dim = example_output['level4'].view(1, -1).size(1)  # 计算展平后的特征维度
-
-        # mlp = MLPRegression(input_dim).to(device)
-        # optimizer = optim.Adam(mlp.parameters(), lr=0.001)
-        # loss_fn = nn.MSELoss()
-
-        # model_path = f'models/MLP_model3_fold{foldname}.pth'
-        # train_mlp(mlp, model, train_loader, val_loader, loss_fn, optimizer, epochs=100, model_path=model_path)
-
-        # pickle.dump(model_path, open(f'History/MLP_model3_fold{foldname}.p', 'wb'))
-
-        # torch.cuda.empty_cache()  # 释放 GPU 内存
+        model = model_dict[mdlName1](length, n_channel=3).to(device)
 
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
 
-        model_path = f'models/{mdlName1}_subject_normal_model1_fold{foldname}.pth'
-        train_model(model, train_loader, val_loader, loss_fn, optimizer, epochs=100, model_path=model_path)
+        model_path = f'models/{mdlName1}_subject_preprocess_model1_fold{foldname}.pth'
+        train_model(model, train_loader, val_loader, loss_fn, optimizer, epochs=50, model_path=model_path)
 
         torch.cuda.empty_cache()  # 释放 GPU 内存
 
@@ -374,16 +365,23 @@ def train_refinement_network():
     for foldname in range(5,10):
         print(f"Training Fold {foldname+1}")
 
-        dt = pickle.load(open(f'data/train_subject_normal{foldname}.p', 'rb'))
-        X_train, Y_train = dt['X_train'], prepareLabel(dt['Y_train'])
+        dt = pickle.load(open(f'data/train_subject_preprocess{foldname}.p', 'rb'))
+        X_train_ppg, X_train_vpg, X_train_apg = dt['X_train'], dt['V_train'], dt['A_train']
+        Y_train = prepareLabel(dt['Y_train'])
 
-        dt = pickle.load(open(f'data/val_subject_normal{foldname}.p', 'rb'))
-        X_val, Y_val = dt['X_val'], prepareLabel(dt['Y_val'])
+        dt = pickle.load(open(f'data/val_subject_preprocess{foldname}.p', 'rb'))
+        X_val_ppg, X_val_vpg, X_val_apg = dt['X_val'], dt['V_val'], dt['A_val']
+        Y_val = prepareLabel(dt['Y_val'])
 
         print('prepareLabel done')
 
-        mdl1 = model_dict[mdlName1](length).to(device)
-        mdl1.load_state_dict(torch.load(f'models/{mdlName1}_subject_normal_model1_fold{foldname}.pth', weights_only=True))
+        # ✅ **拼接 PPG, VPG, APG**
+        X_train = np.concatenate([X_train_ppg, X_train_vpg, X_train_apg], axis=-1)  # (batch_size, length, 3)
+        X_val = np.concatenate([X_val_ppg, X_val_vpg, X_val_apg], axis=-1)  # (batch_size, length, 3)
+
+
+        mdl1 = model_dict[mdlName1](length, n_channel=3).to(device)
+        mdl1.load_state_dict(torch.load(f'models/{mdlName1}_subject_preprocess_model1_fold{foldname}.pth', weights_only=True))
         mdl1.eval()
 
         X_train = torch.tensor(X_train, dtype=torch.float32).permute(0, 2, 1)
@@ -427,8 +425,8 @@ def train_refinement_network():
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
 
-        model_path = f'models/{mdlName2}_subject_normal_model2_fold{foldname}.pth'
-        train_model(model, train_loader, val_loader, loss_fn, optimizer, epochs=100, model_path=model_path, is_refinement=True)
+        model_path = f'models/{mdlName2}_subject_preprocess_model2_fold{foldname}.pth'
+        train_model(model, train_loader, val_loader, loss_fn, optimizer, epochs=50, model_path=model_path, is_refinement=True)
 
         torch.cuda.empty_cache()  # 释放 GPU 内存
 
@@ -500,7 +498,7 @@ def train_mlp(mlp, unet, train_loader, val_loader, loss_fn, optimizer, epochs, m
 
 # 主函数
 def main():
-    train_approximate_network()  # 训练近似模型
+    # train_approximate_network()  # 训练近似模型
     train_refinement_network()   # 训练细化模型
 
 if __name__ == '__main__':

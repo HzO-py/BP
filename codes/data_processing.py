@@ -123,7 +123,7 @@ def downsample_data(minThresh=2500, ratio=0.25):
 
     # ✅ 4. 保存下采样后的数据
     print(f"🎯 共选择 {len(candidates)} 个 episodes")
-    pickle.dump(candidates, open('candidates.p', 'wb'))
+    pickle.dump(candidates, open(os.path.join('output','candidates.p'), 'wb'))
 
     # ✅ 5. 绘制直方图，查看下采样分布
     sbp_counts = [sbps_taken.get(sbp, 0) for sbp in sbp_keys]
@@ -138,7 +138,7 @@ def downsample_data(minThresh=2500, ratio=0.25):
     plt.bar(dbp_keys, dbp_counts, color='r')
     plt.title('dbp')
 
-    plt.savefig('downsample.png')
+    plt.savefig('imgs/downsample.png')
 
 
 # ==========================

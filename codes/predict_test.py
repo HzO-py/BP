@@ -97,11 +97,11 @@ def predict_test_data():
     mdlName2 = 'MultiResUNet1D'
 
     # Load test data
-    dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))
-    X_test = dt['X_test']
-    Y_test = dt['Y_test']
+    dt = pickle.load(open(os.path.join('data', 'test_subject_preprocess.p'), 'rb'))
+    X_test_ppg, X_test_vpg, X_test_apg, global_max_abp = dt['X_test'], dt['V_test'], dt['A_test'], dt['global_max_abp']
 
     # Convert X_test to PyTorch tensor
+    X_test = np.concatenate([X_test_ppg, X_test_vpg, X_test_apg], axis=-1)
     X_test_tensor = torch.tensor(X_test, dtype=torch.float32).permute(0, 2, 1)
 
     # Create DataLoader for test data
@@ -111,8 +111,8 @@ def predict_test_data():
         print(f"Processing Fold {foldname+1}")
 
         # Load and apply approximation network
-        mdl1 = model_dict[mdlName1](length).to(device)
-        mdl1.load_state_dict(torch.load(f'models/{mdlName1}_subject_normal_model1_fold{foldname}.pth', map_location=device))
+        mdl1 = model_dict[mdlName1](length, n_channel=3).to(device)
+        mdl1.load_state_dict(torch.load(f'models/{mdlName1}_subject_preprocess_model1_fold{foldname}.pth', map_location=device))
         mdl1.eval()
 
         Y_test_pred_approximate = []
@@ -121,14 +121,14 @@ def predict_test_data():
                 Y_test_pred_approximate.append(prepareDataDS(mdl1, batch[0]))
 
         Y_test_pred_approximate = torch.cat(Y_test_pred_approximate).numpy()
-        pickle.dump(Y_test_pred_approximate, open(f'test_subject_normal_output_approximate_fold{foldname}.p', 'wb'))
+        pickle.dump(Y_test_pred_approximate, open(os.path.join('output',f'test_subject_preprocess_output_approximate_fold{foldname}.p'), 'wb'))
 
         torch.cuda.empty_cache()
         del mdl1  # Free memory
 
         # Load and apply refinement network
         mdl2 = model_dict[mdlName2](length).to(device)
-        mdl2.load_state_dict(torch.load(f'models/{mdlName2}_subject_normal_model2_fold{foldname}.pth', map_location=device))
+        mdl2.load_state_dict(torch.load(f'models/{mdlName2}_subject_preprocess_model2_fold{foldname}.pth', map_location=device))
         mdl2.eval()
 
         # Convert approximations to tensor and create DataLoader
@@ -142,8 +142,10 @@ def predict_test_data():
                 Y_test_pred.append(mdl2(batch_data).cpu())
 
         Y_test_pred = torch.cat(Y_test_pred).numpy()
-        print(Y_test_pred.shape)
-        pickle.dump(Y_test_pred, open(f'test_subject_normal_output_fold{foldname}.p', 'wb'))
+
+        Y_test_pred = Y_test_pred
+
+        pickle.dump(Y_test_pred, open(os.path.join('output',f'test_subject_preprocess_output_fold{foldname}.p'), 'wb'))
 
         torch.cuda.empty_cache()
         del mdl2  # Free memory
@@ -222,7 +224,7 @@ def predict_mlp_test_data():
 
 
 def main():
-    create_meta_subject_normal()
+    # create_meta_subject_normal()
     predict_test_data()     # predicts and stores the outputs of test data to avoid recomputing
 
 if __name__ == '__main__':
