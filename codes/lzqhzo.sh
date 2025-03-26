@@ -12,6 +12,6 @@
 #SBATCH --gres=gpu:1
 hostname
 # python data_handling.py
-python -u train_models.py
-python -u predict_test.py
-# python evaluate.py
+# python -u train_models.py
+# python -u predict_test.py
+python -u evaluate.py

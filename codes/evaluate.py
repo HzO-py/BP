@@ -201,11 +201,11 @@ def evaluate_BHS_Standard():
 	min_abp = dt['min_abp']
 
 
-	for foldname in range(3,5):
+	for foldname in range(2,10):
 		print(f"Evaluating Fold {foldname+1}")
 
         # Load test predictions for this fold
-		Y_pred = pickle.load(open(f'test_subject_normal_output_fold{foldname}.p', 'rb'))
+		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_normal_output_fold{foldname}.p'), 'rb'))
 
 		(sbps, dbps, maps) = calcError(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)   # compute errors
 
@@ -347,93 +347,95 @@ def evaluate_AAMI_Standard():
 			y_t = Ytrue[i].ravel()
 			y_p = Ypred[i].ravel()
 
-			dbps.append(max_abp*(min(y_p)-min(y_t)))
-			sbps.append(max_abp*(max(y_p)-max(y_t)))
-			maps.append(max_abp*(np.mean(y_p)-np.mean(y_t)))
+			dbps.append((max_abp[i]-min_abp[i])*(min(y_p)-min(y_t)))
+			sbps.append((max_abp[i]-min_abp[i])*(max(y_p)-max(y_t)))
+			maps.append((max_abp[i]-min_abp[i])*(np.mean(y_p)-np.mean(y_t)))
 
 		return (sbps, dbps, maps)
 
-	dt = pickle.load(open(os.path.join('data', 'test.p'), 'rb'))			# loading test data
+	dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))			# loading test data
 	X_test = dt['X_test']
 	Y_test = dt['Y_test']
 
-	dt = pickle.load(open(os.path.join('data', 'meta9.p'), 'rb'))			# loading metadata
+	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))			# loading metadata
 	max_ppg = dt['max_ppg']
 	min_ppg = dt['min_ppg']
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
-	Y_pred = pickle.load(open('test_output.p', 'rb'))						# loading prediction
+	for foldname in range(2,10):
+		print(f"Evaluating Fold {foldname+1}")
+		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_normal_output_fold{foldname}.p'), 'rb'))
 
-	(sbps, dbps, maps) = calcErrorAAMI(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)		# compute error
+		(sbps, dbps, maps) = calcErrorAAMI(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)		# compute error
 
-	print('---------------------')
-	print('|   AAMI Standard   |')
-	print('---------------------')
+		print('---------------------')
+		print('|   AAMI Standard   |')
+		print('---------------------')
 
-	print('-----------------------')
-	print('|     |  ME   |  STD  |')
-	print('-----------------------')
-	print('| DBP | {} | {} |'.format(round(np.mean(dbps), 3), round(np.std(dbps), 3)))
-	print('| MAP | {} | {} |'.format(round(np.mean(maps), 3), round(np.std(maps), 3)))
-	print('| SBP | {} | {} |'.format(round(np.mean(sbps), 3), round(np.std(sbps), 3)))
-	print('-----------------------')
+		print('-----------------------')
+		print('|     |  ME   |  STD  |')
+		print('-----------------------')
+		print('| DBP | {} | {} |'.format(round(np.mean(dbps), 3), round(np.std(dbps), 3)))
+		print('| MAP | {} | {} |'.format(round(np.mean(maps), 3), round(np.std(maps), 3)))
+		print('| SBP | {} | {} |'.format(round(np.mean(sbps), 3), round(np.std(sbps), 3)))
+		print('-----------------------')
 
-	'''
-		Plotting figures
-	'''
+		'''
+			Plotting figures
+		'''
 
-	## DBPS ##
+		## DBPS ##
 
-	fig = plt.figure(figsize=(18, 4), dpi=120)
-	ax1 = plt.subplot(1, 3, 1)
-	ax2 = ax1.twinx()
-	sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax1)
-	sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax2)
-	ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%',
-						 '22.01 \%', '29.35 \%', '36.68 \%', '44.02 \%'])
-	ax1.set_xlabel('Error (mmHg)', fontsize=14)
-	ax1.set_ylabel('Number of Samples', fontsize=14)
-	ax2.set_ylabel('Percentage of Samples', fontsize=14)
-	plt.title('Error in DBP Prediction', fontsize=18)
-	plt.xlim(xmax=50.0, xmin=-50.0)
-	#plt.xticks(np.arange(0, 60+1, 5))
-	plt.tight_layout()
+		fig = plt.figure(figsize=(18, 4), dpi=120)
+		ax1 = plt.subplot(1, 3, 1)
+		ax2 = ax1.twinx()
+		sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax1)
+		sns.distplot(dbps, bins=100, kde=False, rug=False, ax=ax2)
+		ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%',
+							'22.01 \%', '29.35 \%', '36.68 \%', '44.02 \%'])
+		ax1.set_xlabel('Error (mmHg)', fontsize=14)
+		ax1.set_ylabel('Number of Samples', fontsize=14)
+		ax2.set_ylabel('Percentage of Samples', fontsize=14)
+		plt.title('Error in DBP Prediction', fontsize=18)
+		plt.xlim(xmax=50.0, xmin=-50.0)
+		#plt.xticks(np.arange(0, 60+1, 5))
+		plt.tight_layout()
 
-	## MAPS ##
+		## MAPS ##
 
-	#fig = plt.figure(figsize=(6,4), dpi=120)
-	ax1 = plt.subplot(1, 3, 2)
-	ax2 = ax1.twinx()
-	sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax1)
-	sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax2)
-	ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%', '22.01 \%',
-						 '29.35 \%', '36.68 \%', '44.02 \%', '51.36 \%'])
-	ax1.set_xlabel('Error (mmHg)', fontsize=14)
-	ax1.set_ylabel('Number of Samples', fontsize=14)
-	ax2.set_ylabel('Percentage of Samples', fontsize=14)
-	plt.title('Error in MAP Prediction', fontsize=18)
-	plt.xlim(xmax=50.0, xmin=-50.0)
-	#plt.xticks(np.arange(0, 60+1, 5))
-	plt.tight_layout()
+		#fig = plt.figure(figsize=(6,4), dpi=120)
+		ax1 = plt.subplot(1, 3, 2)
+		ax2 = ax1.twinx()
+		sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax1)
+		sns.distplot(maps, bins=100, kde=False, rug=False, ax=ax2)
+		ax2.set_yticklabels(['0 \%', '7.34 \%', '14.67 \%', '22.01 \%',
+							'29.35 \%', '36.68 \%', '44.02 \%', '51.36 \%'])
+		ax1.set_xlabel('Error (mmHg)', fontsize=14)
+		ax1.set_ylabel('Number of Samples', fontsize=14)
+		ax2.set_ylabel('Percentage of Samples', fontsize=14)
+		plt.title('Error in MAP Prediction', fontsize=18)
+		plt.xlim(xmax=50.0, xmin=-50.0)
+		#plt.xticks(np.arange(0, 60+1, 5))
+		plt.tight_layout()
 
-	## SBPS ##
+		## SBPS ##
 
-	ax1 = plt.subplot(1, 3, 3)
-	ax2 = ax1.twinx()
-	sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax1)
-	sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax2)
-	ax2.set_yticklabels(['0 \%', '3.67 \%', '7.34 \%',
-						 '11.01 \%', '14.67 \%', '18.34 \%', '22.01 \%'])
-	ax1.set_xlabel('Error (mmHg)', fontsize=14)
-	ax1.set_ylabel('Number of Samples', fontsize=14)
-	ax2.set_ylabel('Percentage of Samples', fontsize=14)
-	plt.title('Error in SBP Prediction', fontsize=18)
-	plt.xlim(xmax=50.0, xmin=-50.0)
-	#plt.xticks(np.arange(0, 60+1, 5))
-	plt.tight_layout()
+		ax1 = plt.subplot(1, 3, 3)
+		ax2 = ax1.twinx()
+		sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax1)
+		sns.distplot(sbps, bins=100, kde=False, rug=False, ax=ax2)
+		ax2.set_yticklabels(['0 \%', '3.67 \%', '7.34 \%',
+							'11.01 \%', '14.67 \%', '18.34 \%', '22.01 \%'])
+		ax1.set_xlabel('Error (mmHg)', fontsize=14)
+		ax1.set_ylabel('Number of Samples', fontsize=14)
+		ax2.set_ylabel('Percentage of Samples', fontsize=14)
+		plt.title('Error in SBP Prediction', fontsize=18)
+		plt.xlim(xmax=50.0, xmin=-50.0)
+		#plt.xticks(np.arange(0, 60+1, 5))
+		plt.tight_layout()
 
-	plt.show()
+		plt.show()
 
 
 def evaluate_BP_Classification():
@@ -791,3 +793,4 @@ def main():
 #test_subject_output_fold
 if __name__ == '__main__':
 	evaluate_BHS_Standard()
+	evaluate_AAMI_Standard()
