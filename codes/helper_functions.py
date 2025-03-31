@@ -233,21 +233,31 @@ def prepareLabel(Y):
         'level1': [],
         'level2': [],
         'level3': [],
-        'level4': []
+        'level4': [],
+        'sbp': [],  # Add SBP label
+        'dbp': [],   # Add DBP label
+        'sbp_dbp': []
+        
     }
 
     for y in Y:
-        cA1 = approximate(np.array(y).reshape(length), 2)
-        cA2 = approximate(np.array(y).reshape(length), 4)
-        cA3 = approximate(np.array(y).reshape(length), 8)
-        cA4 = approximate(np.array(y).reshape(length), 16)
+        # cA1 = approximate(np.array(y).reshape(length), 2)
+        # cA2 = approximate(np.array(y).reshape(length), 4)
+        # cA3 = approximate(np.array(y).reshape(length), 8)
+        # cA4 = approximate(np.array(y).reshape(length), 16)
 
         out['out'].append(np.array(y.reshape(length, 1)))
-        out['level1'].append(np.array(cA1.reshape(length // 2, 1)))
-        out['level2'].append(np.array(cA2.reshape(length // 4, 1)))
-        out['level3'].append(np.array(cA3.reshape(length // 8, 1)))
-        out['level4'].append(np.array(cA4.reshape(length // 16, 1)))
-
+        # out['level1'].append(np.array(cA1.reshape(length // 2, 1)))
+        # out['level2'].append(np.array(cA2.reshape(length // 4, 1)))
+        # out['level3'].append(np.array(cA3.reshape(length // 8, 1)))
+        # out['level4'].append(np.array(cA4.reshape(length // 16, 1)))
+        sbp = np.max(y)  # SBP is the maximum value of the signal
+        dbp = np.min(y)  # DBP is the minimum value of the signal
+        
+        # Add SBP and DBP to the dictionary
+        out['sbp'].append(sbp)
+        out['dbp'].append(dbp)
+        out['sbp_dbp'].append(np.array([sbp, dbp]).reshape(1, 2))
     out = {k: torch.tensor(np.array(v), dtype=torch.float32).to(device) for k, v in out.items()}
     return out
 

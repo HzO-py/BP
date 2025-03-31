@@ -165,6 +165,16 @@ import os
 from tqdm import tqdm
 import pickle
 from collections import defaultdict
+from scipy.signal import butter, filtfilt
+
+def bandpass_filter(data, lowcut, highcut, fs, order=5):
+
+    # nyq = 0.5 * fs
+    # low = lowcut / nyq
+    # high = highcut / nyq
+    # b, a = butter(order, [low, high], btype='band')
+    # y = filtfilt(b, a, data)
+    return data
 
 def fold_data():
     """
@@ -173,6 +183,11 @@ def fold_data():
     """
     length = 1024  # 信号长度
     test_ratio = 0.1  # 测试集占比，固定 10%
+
+    # 设置滤波参数
+    fs = 125         # 采样率 (Hz)，根据实际情况调整
+    lowcut = 0.5     # PPG 信号低截止频率 (Hz)
+    highcut = 8.0    # PPG 信号高截止频率 (Hz)
 
     # ✅ 读取数据
     fl = h5py.File(os.path.join('data', 'data_with_subjects.hdf5'), 'r')
@@ -193,11 +208,20 @@ def fold_data():
     num_test_subjects = int(len(subject_ids) * test_ratio)
     test_subjects = subject_ids[:num_test_subjects]  # **固定测试集**
 
-
     # ✅ 剩余部分用于训练 & 验证
     train_val_subjects = subject_ids[num_test_subjects:]
     num_subjects = len(train_val_subjects)
     fold_size = num_subjects // 10  # 每 fold 分配的 subject_id 数量
+
+    # 计算全局 abp 的最小值和最大值
+    all_abp_mins, all_abp_maxs = [], []
+    for subject in subject_dict:
+        for ppg, abp in subject_dict[subject]:
+            all_abp_mins.append(np.min(abp[:length]))
+            all_abp_maxs.append(np.max(abp[:length]))
+    
+    global_abp_min = np.min(all_abp_mins)
+    global_abp_max = np.max(all_abp_maxs)
 
     for fold_id in tqdm(range(10), desc="Folding Data"):
         # 选择当前 fold 作为验证集
@@ -209,26 +233,25 @@ def fold_data():
         X_train, Y_train, subject_train = [], [], []
         X_val, Y_val, subject_val = [], [], []
 
-        # 处理训练集：对每个 subject 使用该 subject 的最大最小值归一化 ppg 和 abp
+        # 处理训练集：对每个 subject 使用该 subject 的最大最小值归一化 ppg（先 bandpass 滤波）和全局 abp 最小值和最大值进行归一化
         for subject in train_subjects:
-            # 收集该 subject 下所有 episode 的 ppg 和 abp 最值
             subject_ppg_mins, subject_ppg_maxs = [], []
-            subject_abp_mins, subject_abp_maxs = [], []
             for ppg, abp in subject_dict[subject]:
                 ppg_clip = ppg[:length]
-                abp_clip = abp[:length]
-                subject_ppg_mins.append(np.min(ppg_clip))
-                subject_ppg_maxs.append(np.max(ppg_clip))
-                subject_abp_mins.append(np.min(abp_clip))
-                subject_abp_maxs.append(np.max(abp_clip))
+                # 预先滤波
+                ppg_filtered = bandpass_filter(ppg_clip, lowcut, highcut, fs, order=3)
+                subject_ppg_mins.append(np.min(ppg_filtered))
+                subject_ppg_maxs.append(np.max(ppg_filtered))
+
             subject_ppg_min = np.min(subject_ppg_mins)
             subject_ppg_max = np.max(subject_ppg_maxs)
-            subject_abp_min = np.min(subject_abp_mins)
-            subject_abp_max = np.max(subject_abp_maxs)
             
             # 对该 subject 下的每个 episode 进行处理
             for ppg, abp in subject_dict[subject]:
-                ppg_processed = ppg[:length].reshape(length, 1)
+                # 截取前 length 个点并先滤波
+                ppg_clip = ppg[:length]
+                ppg_filtered = bandpass_filter(ppg_clip, lowcut, highcut, fs, order=3)
+                ppg_processed = ppg_filtered.reshape(length, 1)
                 abp_processed = abp[:length].reshape(length, 1)
                 
                 # 使用该 subject 的参数归一化 ppg
@@ -237,34 +260,32 @@ def fold_data():
                 else:
                     ppg_norm = (ppg_processed - subject_ppg_min) / (subject_ppg_max - subject_ppg_min)
                 
-                # 使用该 subject 的参数归一化 abp
-                if subject_abp_max - subject_abp_min == 0:
+                # 使用全局 abp 的最小值和最大值进行归一化
+                if global_abp_max - global_abp_min == 0:
                     abp_norm = abp_processed
                 else:
-                    abp_norm = (abp_processed - subject_abp_min) / (subject_abp_max - subject_abp_min)
+                    abp_norm = (abp_processed - global_abp_min) / (global_abp_max - global_abp_min)
                 
                 X_train.append(ppg_norm)
                 Y_train.append(abp_norm)
                 subject_train.append(subject)
 
-        # 处理验证集，同样按 subject 独立归一化 ppg 和 abp
+        # 处理验证集，同样按 subject 独立归一化 ppg（bandpass 滤波） 和全局 abp 归一化
         for subject in val_subjects:
             subject_ppg_mins, subject_ppg_maxs = [], []
-            subject_abp_mins, subject_abp_maxs = [], []
             for ppg, abp in subject_dict[subject]:
                 ppg_clip = ppg[:length]
-                abp_clip = abp[:length]
-                subject_ppg_mins.append(np.min(ppg_clip))
-                subject_ppg_maxs.append(np.max(ppg_clip))
-                subject_abp_mins.append(np.min(abp_clip))
-                subject_abp_maxs.append(np.max(abp_clip))
+                ppg_filtered = bandpass_filter(ppg_clip, lowcut, highcut, fs, order=3)
+                subject_ppg_mins.append(np.min(ppg_filtered))
+                subject_ppg_maxs.append(np.max(ppg_filtered))
+
             subject_ppg_min = np.min(subject_ppg_mins)
             subject_ppg_max = np.max(subject_ppg_maxs)
-            subject_abp_min = np.min(subject_abp_mins)
-            subject_abp_max = np.max(subject_abp_maxs)
-            
+
             for ppg, abp in subject_dict[subject]:
-                ppg_processed = ppg[:length].reshape(length, 1)
+                ppg_clip = ppg[:length]
+                ppg_filtered = bandpass_filter(ppg_clip, lowcut, highcut, fs, order=3)
+                ppg_processed = ppg_filtered.reshape(length, 1)
                 abp_processed = abp[:length].reshape(length, 1)
                 
                 if subject_ppg_max - subject_ppg_min == 0:
@@ -272,10 +293,10 @@ def fold_data():
                 else:
                     ppg_norm = (ppg_processed - subject_ppg_min) / (subject_ppg_max - subject_ppg_min)
                 
-                if subject_abp_max - subject_abp_min == 0:
+                if global_abp_max - global_abp_min == 0:
                     abp_norm = abp_processed
                 else:
-                    abp_norm = (abp_processed - subject_abp_min) / (subject_abp_max - subject_abp_min)
+                    abp_norm = (abp_processed - global_abp_min) / (global_abp_max - global_abp_min)
                 
                 X_val.append(ppg_norm)
                 Y_val.append(abp_norm)
@@ -294,11 +315,11 @@ def fold_data():
         pickle.dump({
             'X_train': X_train, 'Y_train': Y_train,
             'subject_train': subject_train
-        }, open(os.path.join('data', f'train_subject_normal{fold_id}.p'), 'wb'))
+        }, open(os.path.join('data', f'train_subject_normal_global{fold_id}.p'), 'wb'))
         pickle.dump({
             'X_val': X_val, 'Y_val': Y_val,
             'subject_val': subject_val
-        }, open(os.path.join('data', f'val_subject_normal{fold_id}.p'), 'wb'))
+        }, open(os.path.join('data', f'val_subject_normal_global{fold_id}.p'), 'wb'))
 
     print("✅ 10 折交叉验证数据拆分完成！")
 
@@ -309,19 +330,23 @@ def fold_data():
         first_ppg, first_abp = subject_dict[subject][0]
         first_ppg_clip = first_ppg[:length]
         first_abp_clip = first_abp[:length]
-        cal_ppg_min = np.min(first_ppg_clip)
-        cal_ppg_max = np.max(first_ppg_clip)
+        # 对 PPG 进行滤波
+        first_ppg_filtered = bandpass_filter(first_ppg_clip, lowcut, highcut, fs, order=3)
+        cal_ppg_min = np.min(first_ppg_filtered)
+        cal_ppg_max = np.max(first_ppg_filtered)
         cal_abp_min = np.min(first_abp_clip)
         cal_abp_max = np.max(first_abp_clip)
         test_calibration[subject] = {
             'ppg_min': cal_ppg_min,
             'ppg_max': cal_ppg_max,
-            'abp_min': cal_abp_min,
-            'abp_max': cal_abp_max
+            'abp_min': global_abp_min,
+            'abp_max': global_abp_max
         }
         
         for ppg, abp in subject_dict[subject]:
-            ppg_processed = ppg[:length].reshape(length, 1)
+            ppg_clip = ppg[:length]
+            ppg_filtered = bandpass_filter(ppg_clip, lowcut, highcut, fs, order=3)
+            ppg_processed = ppg_filtered.reshape(length, 1)
             abp_processed = abp[:length].reshape(length, 1)
             
             if cal_ppg_max - cal_ppg_min == 0:
@@ -329,10 +354,11 @@ def fold_data():
             else:
                 ppg_norm = (ppg_processed - cal_ppg_min) / (cal_ppg_max - cal_ppg_min)
             
-            if cal_abp_max - cal_abp_min == 0:
+            # 使用全局 abp 归一化
+            if global_abp_max - global_abp_min == 0:
                 abp_norm = abp_processed
             else:
-                abp_norm = (abp_processed - cal_abp_min) / (cal_abp_max - cal_abp_min)
+                abp_norm = (abp_processed - global_abp_min) / (global_abp_max - global_abp_min)
             
             X_test.append(ppg_norm)
             Y_test.append(abp_norm)
@@ -342,12 +368,13 @@ def fold_data():
     pickle.dump({
         'X_test': X_test, 'Y_test': Y_test,
         'subject_test': subject_test
-    }, open(os.path.join('data', 'test_subject_normal.p'), 'wb'))
+    }, open(os.path.join('data', 'test_subject_normal_global.p'), 'wb'))
     
     # 保存测试集校准参数
-    pickle.dump(test_calibration, open(os.path.join('data', 'test_calibration_params.p'), 'wb'))
+    pickle.dump(test_calibration, open(os.path.join('data', 'test_calibration_params_global.p'), 'wb'))
 
     print("✅ 10 折交叉验证数据拆分完成！测试集固定不变，并保存了校准参数")
+
 
 
 

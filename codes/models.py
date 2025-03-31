@@ -1445,3 +1445,360 @@ class MultiResUNetDS(nn.Module):
         out = self.final_conv(up9)
 
         return out, level1, level2, level3, level4
+    
+class Multi_CNN(nn.Module):
+    """
+    一个简单的 2D 卷积网络，用于从 PPG 信号预测血压值（SBP 或 DBP）。
+    输入形状： (batch, 1, 1, 1024)
+    """
+    def __init__(self):
+        super(Multi_CNN, self).__init__()
+        # 第一层卷积：将单通道转换为 8 个通道，卷积核尺寸 (1,25)，padding 保持宽度不变
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(1,25), padding=(0,12))
+        self.bn1   = nn.BatchNorm2d(8)
+        # 平均池化：宽度从 1024 降至 1024/4 = 256
+        self.pool1 = nn.AvgPool2d(kernel_size=(1,4), stride=(1,4))
+        
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=(1,25), padding=(0,12))
+        self.bn2   = nn.BatchNorm2d(16)
+        # 池化：256 -> 256/4 = 64
+        self.pool2 = nn.AvgPool2d(kernel_size=(1,4), stride=(1,4))
+        
+        self.conv3 = nn.Conv2d(16, 8, kernel_size=(1,25), padding=(0,12))
+        self.bn3   = nn.BatchNorm2d(8)
+        
+        self.conv4 = nn.Conv2d(8, 4, kernel_size=(1,25), padding=(0,12))
+        self.bn4   = nn.BatchNorm2d(4)
+        
+        self.dropout = nn.Dropout(0.2)
+        # 池化两次后，假设输出尺寸为 (batch, 4, 1, 64) → 展平后 4*64 = 256 个特征
+        self.fc = nn.Linear(256, 1)
+        
+    def forward(self, x):
+        # x: (batch, 1, 1, 1024)
+        # [batch, 1024, 1]
+        x = x.permute(0,2,1)  # 变为 (batch, 1, 1024)
+        x = x.unsqueeze(1)    # 变为 (batch, 1, 1, 1024)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.pool1(x)
+        
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = F.relu(x)
+        x = self.pool2(x)
+        
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = F.relu(x)
+        
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = F.relu(x)
+        
+        x = self.dropout(x)
+        x = x.view(x.size(0), -1)  # flatten
+        fea = self.fc(x)
+        return fea
+    
+class LSTMStage2(nn.Module):
+    """
+    Stage Two 的 LSTM 模型，用于对时序特征进行建模。
+    输入尺寸： (batch, seq_len, 257) —— 新特征维度为 257
+    输出尺寸： (batch, seq_len, 1)
+    """
+    def __init__(self, input_dim=257, hidden1=64, hidden2=32, fc_dim=16, dropout=0.3, output_dim=1):
+        super(LSTMStage2, self).__init__()
+        self.lstm1 = nn.LSTM(input_dim, hidden1, batch_first=True)
+        self.lstm2 = nn.LSTM(hidden1, hidden2, batch_first=True)
+        self.fc1 = nn.Linear(hidden2, fc_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(fc_dim, output_dim)
+        
+    def forward(self, x):
+        # x: (batch, seq_len, input_dim)
+        x, _ = self.lstm1(x)
+        x, _ = self.lstm2(x)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
+    
+from mdnc.modules.conv import UNet1d  # 从MDNC库导入UNet1d
+
+class UNet1d_Model(nn.Module):
+    def __init__(self,):
+        super(UNet1d_Model, self).__init__()
+        self.model = UNet1d(
+            channel=8,
+            layers=[2,2,2,2]
+        )
+
+    def forward(self, x):
+        # 假设 x 是一个字典，包含 'ppg' 作为输入信号
+        x=self.model(x)
+        return x.permute(0, 2, 1)  # 返回预测的 ABP
+    
+class MyConv1dPadSame(nn.Module):
+    """
+    extend nn.Conv1d to support SAME padding
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, groups=1):
+        super(MyConv1dPadSame, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.groups = groups
+        self.conv = torch.nn.Conv1d(
+            in_channels=self.in_channels, 
+            out_channels=self.out_channels, 
+            kernel_size=self.kernel_size, 
+            stride=self.stride, 
+            groups=self.groups)
+
+    def forward(self, x):
+        
+        net = x
+        
+        # compute pad shape
+        in_dim = net.shape[-1]
+        out_dim = (in_dim + self.stride - 1) // self.stride
+        p = max(0, (out_dim - 1) * self.stride + self.kernel_size - in_dim)
+        pad_left = p // 2
+        pad_right = p - pad_left
+        net = F.pad(net, (pad_left, pad_right), "constant", 0)
+        
+        net = self.conv(net)
+
+        return net
+
+class MyMaxPool1dPadSame(nn.Module):
+    """
+    extend nn.MaxPool1d to support SAME padding
+    """
+    def __init__(self, kernel_size):
+        super(MyMaxPool1dPadSame, self).__init__()
+        self.kernel_size = kernel_size
+        self.stride = 1
+        self.max_pool = torch.nn.MaxPool1d(kernel_size=self.kernel_size)
+
+    def forward(self, x):
+        net = x
+        
+        # compute pad shape
+        in_dim = net.shape[-1]
+        out_dim = (in_dim + self.stride - 1) // self.stride
+        p = max(0, (out_dim - 1) * self.stride + self.kernel_size - in_dim)
+        pad_left = p // 2
+        pad_right = p - pad_left
+        net = F.pad(net, (pad_left, pad_right), "constant", 0)
+        
+        net = self.max_pool(net)
+        
+        return net
+
+
+class SE_Block(nn.Module):
+    "Squeeze and Excitation Block"
+    def __init__(self, c, r=16, se_ch_low=4):
+        super().__init__()
+        h = c // r
+        if h < 4: h = se_ch_low
+        self.squeeze = nn.AdaptiveAvgPool1d(1)
+        self.excitation = nn.Sequential(
+            nn.Linear(c, h, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(h, c, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        bs, c, _ = x.shape
+        y = self.squeeze(x).view(bs, c)
+        y = self.excitation(y).view(bs, c, 1)
+        return x * y.expand_as(x)
+
+
+class BasicBlock(nn.Module):
+    """
+    ResNet Basic Block
+    """
+    def __init__(self, in_channels, out_channels, kernel_size, stride, groups, downsample, 
+                 use_bn, use_do, is_first_block=False, is_se=False, se_ch_low=4):
+        super(BasicBlock, self).__init__()
+        
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.out_channels = out_channels
+        self.stride = stride
+        self.groups = groups
+        self.downsample = downsample
+        if self.downsample:
+            self.stride = stride
+        else:
+            self.stride = 1
+        self.is_first_block = is_first_block
+        self.is_se = is_se
+        self.use_bn = use_bn
+        self.use_do = use_do
+
+        # the first conv
+        self.bn1 = nn.BatchNorm1d(in_channels)
+        self.relu1 = nn.ReLU()
+        self.do1 = nn.Dropout(p=0.5)
+        self.conv1 = MyConv1dPadSame(
+            in_channels=in_channels, 
+            out_channels=out_channels, 
+            kernel_size=kernel_size, 
+            stride=self.stride,
+            groups=self.groups)
+
+        # the second conv
+        self.bn2 = nn.BatchNorm1d(out_channels)
+        self.relu2 = nn.ReLU()
+        self.do2 = nn.Dropout(p=0.5)
+        self.conv2 = MyConv1dPadSame(
+            in_channels=out_channels, 
+            out_channels=out_channels, 
+            kernel_size=kernel_size, 
+            stride=1,
+            groups=self.groups)
+                
+        self.max_pool = MyMaxPool1dPadSame(kernel_size=self.stride)
+
+        # Squeeze and excitation layer
+        if self.is_se:  self.se = SE_Block(out_channels, 16, se_ch_low)
+
+    def forward(self, x):
+        if x.shape[0]<4:    self.use_bn = False
+
+        identity = x
+        
+        # the first conv
+        out = x
+        if not self.is_first_block:
+            if self.use_bn:
+                out = self.bn1(out)
+            out = self.relu1(out)
+            if self.use_do:
+                out = self.do1(out)
+        out = self.conv1(out)
+        
+        # the second conv
+        if self.use_bn:
+            out = self.bn2(out)
+        out = self.relu2(out)
+        if self.use_do:
+            out = self.do2(out)
+        out = self.conv2(out)
+        
+        # if downsample, also downsample identity
+        if self.downsample:
+            identity = self.max_pool(identity)
+            
+        # if expand channel, also pad zeros to identity
+        if self.out_channels != self.in_channels:
+            identity = identity.transpose(-1,-2)
+            ch1 = (self.out_channels-self.in_channels)//2
+            ch2 = self.out_channels-self.in_channels-ch1
+            identity = F.pad(identity, (ch1, ch2), "constant", 0)
+            identity = identity.transpose(-1,-2)
+        
+        # Squeeze and excitation layer
+        if self.is_se: 
+            out = self.se(out)
+        # shortcut
+        out += identity
+
+        return out
+
+class ResNet1D(nn.Module):
+    def __init__(self, in_channels=1, base_filters=32, first_kernel_size=13, kernel_size=5, stride=4, 
+                        groups=2, n_block=8, output_size=2, is_se=True, se_ch_low=4, downsample_gap=2, 
+                        increasefilter_gap=2, use_bn=True, use_do=True, verbose=False):
+        super(ResNet1D, self).__init__()
+        self.verbose = verbose
+        self.n_block = n_block
+        self.first_kernel_size = first_kernel_size
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.groups = groups
+        self.use_bn = use_bn
+        self.use_do = use_do
+        self.is_se = is_se
+        self.se_ch_low = se_ch_low
+
+        self.downsample_gap = downsample_gap # 2 for base model
+        self.increasefilter_gap = increasefilter_gap # 4 for base model
+
+        # first block
+        self.first_block_conv = MyConv1dPadSame(in_channels=in_channels, out_channels=base_filters, kernel_size=self.first_kernel_size, stride=1)
+        self.first_block_bn = nn.BatchNorm1d(base_filters)
+        self.first_block_relu = nn.ReLU()
+        self.first_block_maxpool = MyMaxPool1dPadSame(kernel_size=self.stride)
+        out_channels = base_filters
+                
+        # residual blocks
+        self.basicblock_list = nn.ModuleList()
+        for i_block in range(self.n_block):
+            # is_first_block
+            if i_block == 0:
+                is_first_block = True
+            else:
+                is_first_block = False
+            # downsample at every self.downsample_gap blocks
+            if i_block % self.downsample_gap == 1:
+                downsample = True
+            else:
+                downsample = False
+            # in_channels and out_channels
+            if is_first_block:
+                in_channels = base_filters
+                out_channels = in_channels
+            else:
+                # increase filters at every self.increasefilter_gap blocks
+                in_channels = int(base_filters*2**((i_block-1)//self.increasefilter_gap))
+                if (i_block % self.increasefilter_gap == 0) and (i_block != 0):
+                    out_channels = in_channels * 2
+                else:
+                    out_channels = in_channels
+            
+            tmp_block = BasicBlock(
+                in_channels=in_channels, 
+                out_channels=out_channels, 
+                kernel_size=self.kernel_size, 
+                stride = self.stride, 
+                groups = self.groups, 
+                downsample=downsample, 
+                use_bn = self.use_bn, 
+                use_do = self.use_do, 
+                is_first_block=is_first_block,
+                is_se=self.is_se,
+                se_ch_low=self.se_ch_low)
+            self.basicblock_list.append(tmp_block)
+
+        # final prediction
+        self.final_bn = nn.BatchNorm1d(out_channels)
+        self.final_relu = nn.ReLU(inplace=True)
+
+        # Classifier
+        self.main_clf = nn.Linear(out_channels, output_size)
+
+    def forward(self, x):
+        out = self.first_block_conv(x)
+        out = self.first_block_bn(out)
+        out = self.first_block_relu(out)
+        out = self.first_block_maxpool(out)
+
+        for block in self.basicblock_list:
+            out = block(out)
+
+        out = self.final_bn(out)
+        h = self.final_relu(out)
+        h = h.mean(-1)
+
+        out = self.main_clf(h)
+        return out

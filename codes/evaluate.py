@@ -181,31 +181,32 @@ def evaluate_BHS_Standard():
 		for i in (range(len(Ytrue))):
 			y_t = Ytrue[i].ravel()
 			y_p = Ypred[i].ravel()
-			dbps.append((max_abp[i]-min_abp[i])*abs(min(y_t)-min(y_p)))#(max_abp-min_abp)*
-			sbps.append((max_abp[i]-min_abp[i])*abs(max(y_t)-max(y_p)))
-			maps.append((max_abp[i]-min_abp[i])*abs(np.mean(y_t)-np.mean(y_p)))
+			dbps.append((max_abp[i]-min_abp[i])*abs(min(y_t)-y_p[1]))#(max_abp-min_abp)*
+			sbps.append((max_abp[i]-min_abp[i])*abs(max(y_t)-y_p[0]))
+			maps.append((max_abp[i]-min_abp[i])*abs(np.mean(y_t)-(0.66*y_p[1]+0.33*y_p[0])))
+
 
 		
 
 		return (sbps, dbps, maps)
 
 
-	dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))				# loading test data
+	dt = pickle.load(open(os.path.join('data', 'test_subject_normal_global.p'), 'rb'))				# loading test data
 	X_test = dt['X_test']
 	Y_test = dt['Y_test']
 
-	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))				# loading meta data
+	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal_global.p'), 'rb'))				# loading meta data
 	max_ppg = dt['max_ppg']
 	min_ppg = dt['min_ppg']
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
 
-	for foldname in range(2,10):
+	for foldname in range(5,10):
 		print(f"Evaluating Fold {foldname+1}")
 
         # Load test predictions for this fold
-		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_normal_output_fold{foldname}.p'), 'rb'))
+		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_normal_global_resnet_fold{foldname}.p'), 'rb'))
 
 		(sbps, dbps, maps) = calcError(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)   # compute errors
 
@@ -347,25 +348,25 @@ def evaluate_AAMI_Standard():
 			y_t = Ytrue[i].ravel()
 			y_p = Ypred[i].ravel()
 
-			dbps.append((max_abp[i]-min_abp[i])*(min(y_p)-min(y_t)))
-			sbps.append((max_abp[i]-min_abp[i])*(max(y_p)-max(y_t)))
-			maps.append((max_abp[i]-min_abp[i])*(np.mean(y_p)-np.mean(y_t)))
+			dbps.append((max_abp[i]-min_abp[i])*min(y_t)-y_p[1])#(max_abp-min_abp)*
+			sbps.append((max_abp[i]-min_abp[i])*max(y_t)-y_p[0])
+			maps.append((max_abp[i]-min_abp[i])*np.mean(y_t)-(0.66*y_p[1]+0.33*y_p[0]))
 
 		return (sbps, dbps, maps)
 
-	dt = pickle.load(open(os.path.join('data', 'test_subject_normal.p'), 'rb'))			# loading test data
+	dt = pickle.load(open(os.path.join('data', 'test_subject_normal_global.p'), 'rb'))			# loading test data
 	X_test = dt['X_test']
 	Y_test = dt['Y_test']
 
-	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal.p'), 'rb'))			# loading metadata
+	dt = pickle.load(open(os.path.join('data', 'meta_subject_normal_global.p'), 'rb'))			# loading metadata
 	max_ppg = dt['max_ppg']
 	min_ppg = dt['min_ppg']
 	max_abp = dt['max_abp']
 	min_abp = dt['min_abp']
 
-	for foldname in range(2,10):
+	for foldname in range(5,10):
 		print(f"Evaluating Fold {foldname+1}")
-		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_normal_output_fold{foldname}.p'), 'rb'))
+		Y_pred = pickle.load(open(os.path.join('output',f'test_subject_normal_global_resnet_fold{foldname}.p'), 'rb'))
 
 		(sbps, dbps, maps) = calcErrorAAMI(Y_test, Y_pred, max_abp, min_abp, max_ppg, min_ppg)		# compute error
 
